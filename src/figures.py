@@ -30,7 +30,7 @@ from elasticity import estimate_all
 from experiment import analyze, apply_cuped, required_sample_size, simulate_experiment, TRUE_UPLIFT
 from forecast import build_features, walk_forward
 from generate_data import generate_panel
-from optimize_prices import build_scenarios, constraint_cost
+from optimize_prices import build_scenarios, constraint_cost, solve
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORTS = ROOT / "reports"
@@ -40,6 +40,7 @@ REPORTS.mkdir(exist_ok=True)
 # el resto es tinta y gris de chrome. No se generan tonos adicionales.
 BLUE = "#2a78d6"
 ORANGE = "#eb6834"
+RED = "#e34948"   # polo opuesto al azul en la escala divergente
 INK = "#0b0b0b"
 INK_2 = "#52514e"
 MUTED = "#898781"
@@ -204,6 +205,69 @@ def fig_forecast(panel: pd.DataFrame, market: str = "MKT-C"):
     return _save(fig, "forecast_vs_actual.png")
 
 
+def fig_price_plan(panel: pd.DataFrame):
+    """El plan recomendado: que mercado sube, cual baja y por que.
+
+    Barra divergente porque el signo es la decision. Se marca ademas donde el
+    tope de movimientos simultaneos frena al optimizador, y el unico mercado
+    cuyo intervalo cruza -1, que es el valor donde la recomendacion se invierte.
+    """
+    el = estimate_all(panel)
+    scenarios = build_scenarios(panel, el)
+    plan = solve(scenarios)["plan"].set_index("market")["change"]
+    uncapped = solve(scenarios, max_big_moves=len(plan))["plan"].set_index("market")["change"]
+
+    d = el.set_index("market").loc[plan.index].copy()
+    d["change"] = plan
+    d["uncapped"] = uncapped
+    # De mas elastico a menos: el relato va de recortes grandes al unico aumento.
+    d = d.sort_values("controlled").reset_index()
+
+    fig, ax = plt.subplots(figsize=(8.6, 3.8))
+    _style(ax, grid_axis="x")
+
+    y = np.arange(len(d))
+    colors = [RED if c > 0 else BLUE for c in d["change"]]
+    ax.barh(y, d["change"] * 100, height=0.52, color=colors, zorder=3)
+
+    # Donde el tope frena: marca de lo que el optimizador habria elegido sin el.
+    # Va en la leyenda y no rotulo por barra, que colisionaba con los valores.
+    held = False
+    for i, r in d.iterrows():
+        if abs(r["uncapped"] - r["change"]) > 1e-9:
+            ax.plot([r["uncapped"] * 100] * 2, [i - 0.30, i + 0.30],
+                    color=MUTED, linewidth=2, zorder=4,
+                    label=None if held else "Without the coordination cap")
+            held = True
+
+    for i, r in d.iterrows():
+        offset = 8 if r["change"] > 0 else -8
+        ax.annotate(f"{r['change'] * 100:+.0f}%", xy=(r["change"] * 100, i),
+                    xytext=(offset, 0), textcoords="offset points",
+                    ha="left" if r["change"] > 0 else "right", va="center",
+                    fontsize=10, weight="bold", color=INK)
+
+    ax.axvline(0, color=AXIS, linewidth=1, zorder=2)
+    labels = [f"{r['market']}   e = {r['controlled']:.2f}" for _, r in d.iterrows()]
+    ax.set_yticks(y, labels, fontsize=9.5)
+    ax.tick_params(axis="y", colors=INK_2)
+    ax.set_xlabel("Recommended price change")
+    ax.xaxis.set_major_formatter(lambda v, _: f"{v:+.0f}%")
+    ax.set_xlim(-22, 17)
+    ax.set_title("Cut price where demand is elastic; raise it in the one market where it is not",
+                 loc="left", color=INK, pad=12)
+    ax.legend(loc="lower right", frameon=False, fontsize=8.5)
+
+    # El caso ambiguo se senala en la figura, no solo en el texto. Se rotula al
+    # lado del cero, que es el unico espacio libre en esa fila.
+    amb = d[(d["ci_low"] < -1) & (d["ci_high"] > -1)]
+    for i, r in amb.iterrows():
+        ax.annotate("interval crosses -1 — the value at which\nthis recommendation reverses",
+                    xy=(1.2, i), xytext=(0, 0), textcoords="offset points",
+                    ha="left", va="center", fontsize=8.5, color=ORANGE, weight="bold")
+    return _save(fig, "price_plan.png")
+
+
 def fig_constraints(panel: pd.DataFrame):
     """Lo que cuesta, en puntos de uplift, respetar cada restriccion."""
     scenarios = build_scenarios(panel, estimate_all(panel))
@@ -293,6 +357,7 @@ def fig_experiment():
 if __name__ == "__main__":
     panel = generate_panel()
     print("\nGenerando figuras del README\n")
+    fig_price_plan(panel)
     fig_elasticity(panel)
     fig_forecast(panel)
     fig_constraints(panel)
