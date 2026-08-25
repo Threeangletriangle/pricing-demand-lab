@@ -24,6 +24,33 @@ whether the method is sound before you trust it on data where you cannot.
 
 ---
 
+## The four results, in four charts
+
+<table>
+<tr>
+<td width="50%"><img src="reports/elasticity_estimators.png" alt="Naive and controlled elasticity estimates against the known truth"></td>
+<td width="50%"><img src="reports/constraint_cost.png" alt="Revenue uplift by scenario, showing what each operating constraint costs"></td>
+</tr>
+<tr>
+<td><b>1. Elasticity.</b> The naive estimator misses by up to 1.52 and in an inconsistent
+direction. The controlled one covers the truth in all five markets.</td>
+<td><b>3. Optimization.</b> Each operating constraint is priced in points of uplift, which
+turns a hardcoded assumption into a decision someone can argue about.</td>
+</tr>
+</table>
+
+![Forecast against out-of-sample data, and MAPE against the seasonal-naive baseline](reports/forecast_vs_actual.png)
+
+**2. Forecasting.** Validated walk-forward, never on data the model has seen, and always
+reported against the baseline a model has to beat to justify its maintenance cost.
+
+![Confidence interval with and without CUPED](reports/experiment_cuped.png)
+
+**4. Experimentation.** CUPED narrows the interval 43% at the same sample size. Both intervals
+contain the true simulated effect; the unadjusted one is too wide to act on.
+
+---
+
 ## Results
 
 Everything below is reproduced by running the modules. Numbers come from the committed seed.
@@ -132,6 +159,7 @@ python src/elasticity.py         # three estimators scored against known truth
 python src/forecast.py           # walk-forward validation, MLflow tracking, SHAP
 python src/optimize_prices.py    # MIP price plan and constraint costing
 python src/experiment.py         # power, A/A, uplift, CUPED
+python src/figures.py            # regenerates every chart in this README
 
 mlflow ui --backend-store-uri sqlite:///mlflow.db   # inspect the runs
 ```
@@ -160,6 +188,7 @@ src/elasticity.py        naive / controlled / fixed-effects estimators + bias me
 src/forecast.py          XGBoost forecasting, walk-forward CV, MLflow, SHAP
 src/optimize_prices.py   MIP price optimization (PuLP + CBC), constraint cost analysis
 src/experiment.py        power analysis, A/A test, difference in means, CUPED
+src/figures.py           every chart in this README, generated from the modules above
 tests/                   the README's claims, as assertions
 reports/                 generated figures
 ```

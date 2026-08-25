@@ -1,6 +1,6 @@
-.PHONY: all data elasticity forecast optimize experiment test clean ui
+.PHONY: all data elasticity forecast optimize experiment figures test clean ui
 
-all: data elasticity forecast optimize experiment
+all: data elasticity forecast optimize experiment figures
 
 data:
 	python src/generate_data.py
@@ -16,6 +16,9 @@ optimize:
 
 experiment:
 	python src/experiment.py
+
+figures:
+	python src/figures.py
 
 test:
 	pytest -q

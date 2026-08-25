@@ -78,8 +78,14 @@ def seasonal_naive(d: pd.DataFrame) -> np.ndarray:
 
 
 def walk_forward(d: pd.DataFrame, n_folds: int = 4, horizon: int = 13):
-    """Entrena sobre lo anterior, predice el bloque siguiente, avanza."""
+    """Entrena sobre lo anterior, predice el bloque siguiente, avanza.
+
+    Devuelve las metricas por bloque, el ultimo modelo entrenado y las
+    predicciones fuera de muestra concatenadas, que son las unicas que pueden
+    graficarse honestamente contra lo observado.
+    """
     results = []
+    preds = []
     n = len(d)
     for fold in range(n_folds):
         test_end = n - (n_folds - fold - 1) * horizon
@@ -105,7 +111,20 @@ def walk_forward(d: pd.DataFrame, n_folds: int = 4, horizon: int = 13):
                 "mape_baseline": mape(test["units"].to_numpy(), seasonal_naive(test)),
             }
         )
-    return pd.DataFrame(results), model
+        preds.append(
+            pd.DataFrame(
+                {
+                    "date": test["date"].to_numpy(),
+                    "fold": fold + 1,
+                    "actual": test["units"].to_numpy(),
+                    "predicted": pred,
+                    "baseline": seasonal_naive(test),
+                }
+            )
+        )
+
+    out = pd.concat(preds, ignore_index=True) if preds else pd.DataFrame()
+    return pd.DataFrame(results), model, out
 
 
 def run(track: bool = True) -> pd.DataFrame:
@@ -119,7 +138,7 @@ def run(track: bool = True) -> pd.DataFrame:
     summary = []
     for market, g in panel.groupby("market"):
         d = build_features(g)
-        folds, model = walk_forward(d)
+        folds, model, _ = walk_forward(d)
         m_model = folds["mape_model"].mean()
         m_base = folds["mape_baseline"].mean()
         lift = (m_base - m_model) / m_base * 100
